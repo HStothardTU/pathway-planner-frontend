@@ -1,4 +1,41 @@
-streamlit
-pandas
-matplotlib
-plotly 
+import numpy as np
+import pandas as pd
+from fastapi import APIRouter, Body
+from app.services.optimizer import optimize_fuel_mix
+
+router = APIRouter()
+
+@router.post("/optimize/")
+def optimize_scenario(scenario_data: dict = Body(...)):
+    """
+    Run optimization for a given scenario.
+    Expects scenario_data as JSON in the request body.
+    Returns optimized fuel mix, minimized objective value, and status.
+    """
+    result = optimize_fuel_mix(scenario_data, objective="emissions")
+    return {
+        "success": result["success"],
+        "message": result["message"],
+        "optimized_mix": result["optimized_mix"],
+        "objective_value": result["objective_value"]
+    }
+
+def calculate_road_subsector(scenario_data):
+    years = scenario_data["years"]
+    vehicle_types = scenario_data["vehicle_types"]
+    results = []
+
+    for i, year in enumerate(years):
+        year_result = {"year": year, "total_emissions": 0, "total_cost": 0, "fuel_demand": {}}
+        for vt in vehicle_types:
+            miles = scenario_data["miles_traveled"][vt][i]
+            mix = scenario_data["fuel_mix"][vt][i]
+            for fuel, share in mix.items():
+                miles_fuel = miles * share
+                emissions = miles_fuel * scenario_data["emission_factors"][fuel]
+                cost = miles_fuel * scenario_data["cost_per_mile"][fuel]
+                year_result["total_emissions"] += emissions
+                year_result["total_cost"] += cost
+                year_result["fuel_demand"][fuel] = year_result["fuel_demand"].get(fuel, 0) + miles_fuel
+        results.append(year_result)
+    return results 
