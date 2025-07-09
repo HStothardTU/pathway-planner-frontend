@@ -1,7 +1,19 @@
 import streamlit as st
 import requests
 
-API_URL = "http://localhost:8000/api/v1/optimize/"
+API_BASE = "http://localhost:8000/api/v1"
+
+def download_file(url, filename):
+    response = requests.get(url)
+    if response.status_code == 200:
+        st.download_button(
+            label=f"Download {filename.split('.')[-1].upper()}",
+            data=response.content,
+            file_name=filename,
+            mime="application/pdf" if filename.endswith(".pdf") else "text/csv"
+        )
+    else:
+        st.error(f"Failed to download {filename}: {response.status_code}")
 
 def show():
     st.title("Visualize Pathways")
@@ -43,16 +55,29 @@ def show():
         }
     }
 
+    scenario_id = st.number_input("Scenario ID to export", min_value=1, step=1)
+    if st.button("Download CSV"):
+        download_file(f"{API_BASE}/scenarios/{scenario_id}/export/csv", f"scenario_{scenario_id}_results.csv")
+    if st.button("Download PDF"):
+        download_file(f"{API_BASE}/scenarios/{scenario_id}/export/pdf", f"scenario_{scenario_id}_results.pdf")
+
     if st.button("Run Optimization"):
         with st.spinner("Optimizing..."):
             try:
-                response = requests.post(API_URL, json=scenario_data)
+                response = requests.post(f"{API_BASE}/optimize/", json=scenario_data)
                 if response.status_code == 200:
                     result = response.json()
-                    st.success("Optimization complete!")
-                    st.write("Objective value (minimized emissions):", result["objective_value"])
-                    st.write("Optimized fuel mix:")
-                    st.json(result["optimized_mix"])
+                    if result["success"]:
+                        st.success("Optimization complete!")
+                        st.write("Objective value (minimized emissions):", result["objective_value"])
+                        st.write("Optimized fuel mix:")
+                        st.json(result["optimized_mix"])
+                    else:
+                        st.error(
+                            "No feasible pathway found with current constraints. "
+                            "Try relaxing year-on-year change limits, or adjust scenario targets."
+                        )
+                        st.info(f"Solver message: {result['message']}")
                 else:
                     st.error(f"API call failed: {response.status_code}")
             except Exception as e:
